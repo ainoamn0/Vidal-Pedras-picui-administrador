@@ -18,7 +18,8 @@
             </div>
             <div class="header-actions">
                 <button class="btn btn-primary" onclick="openModal()">+ Novo Produto</button>
-                <button class="btn btn-success" onclick="exportProducts()">💾 Exportar products.js</button>
+                <button class="btn btn-outline" onclick="openGithubModal()">⚙️ Configurar GitHub</button>
+                <button class="btn btn-success" onclick="syncWithGithub()" id="sync-btn">☁️ Salvar na Loja (Sincronizar)</button>
                 <a href="index.html" class="btn btn-outline" target="_blank">Ver Loja</a>
             </div>
         </header>
@@ -102,6 +103,42 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline" onclick="closeModal()">Cancelar</button>
                     <button type="submit" class="btn btn-primary">Salvar Produto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal GitHub Settings -->
+    <div id="github-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Configurações do GitHub</h2>
+                <span class="close-btn" onclick="closeGithubModal()">&times;</span>
+            </div>
+            <div style="margin-bottom: 20px; font-size: 14px; color: #555;">
+                Para que a loja se atualize sozinha, informe os dados do seu repositório no GitHub. Esses dados ficam salvos apenas neste navegador.
+            </div>
+            <form id="github-form">
+                <div class="form-group">
+                    <label for="gh-token">Personal Access Token (PAT) *</label>
+                    <input type="password" id="gh-token" required placeholder="Ex: ghp_xxxxxxxxxxxxxxxxxxxx">
+                </div>
+                <div class="form-group">
+                    <label for="gh-owner">Usuário do GitHub *</label>
+                    <input type="text" id="gh-owner" required placeholder="Ex: aiasp">
+                </div>
+                <div class="form-group">
+                    <label for="gh-repo">Nome do Repositório *</label>
+                    <input type="text" id="gh-repo" required placeholder="Ex: am-atelie">
+                </div>
+                <div class="form-group">
+                    <label for="gh-branch">Branch principal *</label>
+                    <input type="text" id="gh-branch" required value="main" placeholder="main ou master">
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline" onclick="closeGithubModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar Configurações</button>
                 </div>
             </form>
         </div>

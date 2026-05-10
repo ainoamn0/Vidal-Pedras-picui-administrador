@@ -259,32 +259,108 @@ function deleteProduct(id) {
     }
 }
 
-// Export Functionality
-function exportProducts() {
-    // Formatar o array para uma string JS formatada e bonita
-    const jsonString = JSON.stringify(adminProducts, null, 4);
-    
-    // Substituir a sintaxe JSON por uma sintaxe JS válida para a constante
-    const jsContent = `const products = ${jsonString};`;
+// Configurações do GitHub
+const githubModal = document.getElementById('github-modal');
+const githubForm = document.getElementById('github-form');
 
-    // Criar um Blob com o conteúdo
-    const blob = new Blob([jsContent], { type: 'text/javascript;charset=utf-8' });
-    
-    // Criar um link para download
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'products.js';
-    
-    // Simular o clique
-    document.body.appendChild(a);
-    a.click();
-    
-    // Limpar
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    alert('Arquivo products.js baixado!\nSubstitua o arquivo antigo na sua pasta por este novo para aplicar as alterações na loja principal.');
+function openGithubModal() {
+    document.getElementById('gh-token').value = localStorage.getItem('gh-token') || '';
+    document.getElementById('gh-owner').value = localStorage.getItem('gh-owner') || '';
+    document.getElementById('gh-repo').value = localStorage.getItem('gh-repo') || '';
+    document.getElementById('gh-branch').value = localStorage.getItem('gh-branch') || 'main';
+    githubModal.classList.add('active');
+}
+
+function closeGithubModal() {
+    githubModal.classList.remove('active');
+}
+
+githubForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    localStorage.setItem('gh-token', document.getElementById('gh-token').value.trim());
+    localStorage.setItem('gh-owner', document.getElementById('gh-owner').value.trim());
+    localStorage.setItem('gh-repo', document.getElementById('gh-repo').value.trim());
+    localStorage.setItem('gh-branch', document.getElementById('gh-branch').value.trim());
+    alert('Configurações do GitHub salvas no navegador!');
+    closeGithubModal();
+});
+
+// Sincronização Automática com GitHub (Git-based CMS)
+async function syncWithGithub() {
+    const token = localStorage.getItem('gh-token');
+    const owner = localStorage.getItem('gh-owner');
+    const repo = localStorage.getItem('gh-repo');
+    const branch = localStorage.getItem('gh-branch') || 'main';
+
+    if (!token || !owner || !repo) {
+        alert('Por favor, configure os dados do GitHub primeiro clicando em "⚙️ Configurar GitHub".');
+        openGithubModal();
+        return;
+    }
+
+    const syncBtn = document.getElementById('sync-btn');
+    syncBtn.innerHTML = '⏳ Sincronizando...';
+    syncBtn.disabled = true;
+
+    try {
+        // Formatar o array para o formato JS
+        const jsonString = JSON.stringify(adminProducts, null, 4);
+        const jsContent = `const products = ${jsonString};\n`;
+
+        // Codificar em Base64 (suporte para caracteres UTF-8)
+        const encodedContent = btoa(unescape(encodeURIComponent(jsContent)));
+        
+        const path = 'products.js';
+        const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+        
+        // 1. Obter o SHA atual do arquivo (necessário para atualizar)
+        let sha = null;
+        const getRes = await fetch(`${url}?ref=${branch}`, {
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        
+        if (getRes.ok) {
+            const getJson = await getRes.json();
+            sha = getJson.sha;
+        } else if (getRes.status !== 404) {
+            throw new Error(`Erro ao buscar arquivo: ${getRes.statusText}`);
+        }
+
+        // 2. Fazer o PUT do novo conteúdo
+        const putData = {
+            message: "Atualizar catálogo de produtos via Admin",
+            content: encodedContent,
+            branch: branch
+        };
+        if (sha) putData.sha = sha;
+
+        const putRes = await fetch(url, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(putData)
+        });
+
+        if (!putRes.ok) {
+            const errData = await putRes.json();
+            throw new Error(errData.message || 'Erro ao atualizar repositório');
+        }
+
+        alert('✅ Loja atualizada com sucesso!\nAguarde de 1 a 2 minutos para que o GitHub Pages aplique a mudança no site principal.');
+
+    } catch (err) {
+        console.error(err);
+        alert(`❌ Erro ao sincronizar: ${err.message}\nVerifique se o Token, Repositório e Branch estão corretos.`);
+    } finally {
+        syncBtn.innerHTML = '☁️ Salvar na Loja (Sincronizar)';
+        syncBtn.disabled = false;
+    }
 }
 
 // Inicializar a tabela ao carregar a página
