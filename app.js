@@ -6,6 +6,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentModalImages = [];
     let currentModalImageIndex = 0;
 
+    // ── Carregar produtos salvos no localStorage (substitui products.js se existir) ──
+    const savedProducts = localStorage.getItem('vidal_products');
+    if (savedProducts) {
+        try {
+            const parsed = JSON.parse(savedProducts);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                products.length = 0;
+                parsed.forEach(p => products.push(p));
+            }
+        } catch(e) { console.warn('Erro ao carregar produtos salvos:', e); }
+    }
+
     // GSAP Initialization
     gsap.registerPlugin(ScrollTrigger);
 
@@ -19,6 +31,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const whatsappLink = `https://wa.me/${whatsappNumber}?text=${message}`;
 
         card.innerHTML = `
+            <div class="card-admin-actions">
+                <button class="btn-card-action edit" onclick="event.stopPropagation(); window.triggerCardEdit(${product.id})" title="Editar Produto">✏️</button>
+                <button class="btn-card-action delete" onclick="event.stopPropagation(); window.triggerCardDelete(${product.id})" title="Excluir Produto">🗑️</button>
+            </div>
             <div class="product-image-container">
                 <div class="image-slider">
                     ${product.images.map((img, index) => `
@@ -247,5 +263,511 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         }
+    }
+
+    /* ==========================================================================
+       MODULO ADMINISTRATIVO INTEGRADO (CMS INTEGRADO)
+       ========================================================================== */
+
+    // 1. Controle de Modais Admin (Abrir / Fechar)
+    function openAdminModal(id) {
+        const m = document.getElementById(id);
+        if (m) {
+            m.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    function closeAdminModal(id) {
+        const m = document.getElementById(id);
+        if (m) {
+            m.classList.remove('active');
+            // Só libera o overflow se nenhum outro modal estiver aberto
+            if (!document.querySelector('.modal-admin.active') && !document.querySelector('.modal.active')) {
+                document.body.style.overflow = '';
+            }
+        }
+    }
+
+    window.openAdminModal = openAdminModal;
+    window.closeAdminModal = closeAdminModal;
+
+    // 2. Sistema de Notificações Toast Modernas
+    function showToast(message, type = 'info', duration = 4000) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = `toast-alert ${type}`;
+        
+        let icon = 'ℹ️';
+        if (type === 'success') icon = '✅';
+        if (type === 'error') icon = '❌';
+        if (type === 'info' && message.includes('Sincronizando')) {
+            icon = '<span class="spinner-icon">🔄</span>';
+        }
+        
+        toast.innerHTML = `<div>${icon}</div><div>${message}</div>`;
+        container.appendChild(toast);
+        
+        setTimeout(() => {
+            toast.classList.add('hide');
+            setTimeout(() => toast.remove(), 400);
+        }, duration);
+        
+        return toast;
+    }
+    window.showToast = showToast;
+
+    // 3. Autenticação & Modo Admin
+    const loginForm = document.getElementById('login-form');
+    const loginCpf = document.getElementById('login-cpf');
+
+    // Máscara para CPF no input de login
+    if (loginCpf) {
+        loginCpf.addEventListener('input', (e) => {
+            let val = e.target.value.replace(/\D/g, "");
+            if (val.length > 9) {
+                val = val.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+            } else if (val.length > 6) {
+                val = val.replace(/^(\d{3})(\d{3})(\d{0,3})$/, "$1.$2.$3");
+            } else if (val.length > 3) {
+                val = val.replace(/^(\d{3})(\d{0,3})$/, "$1.$2");
+            }
+            e.target.value = val;
+        });
+    }
+
+    function enableAdminMode() {
+        document.body.classList.add('admin-mode-active');
+        sessionStorage.setItem('adminMode', 'true');
+        const loginBtn = document.getElementById('admin-login-btn');
+        if (loginBtn) loginBtn.textContent = 'Painel Ativo';
+        
+        // Re-renderiza para exibir botões de edição nos cards
+        renderSection('pedra', stonesContainer);
+        renderSection('acessorio', accessoriesContainer);
+    }
+
+    function disableAdminMode() {
+        document.body.classList.remove('admin-mode-active');
+        sessionStorage.removeItem('adminMode');
+        const loginBtn = document.getElementById('admin-login-btn');
+        if (loginBtn) loginBtn.textContent = 'Entrar';
+        
+        // Re-renderiza para remover os botões de edição nos cards
+        renderSection('pedra', stonesContainer);
+        renderSection('acessorio', accessoriesContainer);
+        showToast("🚪 Modo Administrador desativado.", "info");
+    }
+
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            const cpf = document.getElementById('login-cpf').value.trim();
+            const password = document.getElementById('login-password').value;
+
+            // Validação: qualquer e-mail, CPF e senha fixos
+            if (cpf === '570.384.654-49' && password === '#Deusefiel122009') {
+                showToast("🔑 Acesso administrativo concedido!", "success");
+                closeAdminModal('login-modal');
+                enableAdminMode();
+                loginForm.reset();
+            } else {
+                showToast("❌ E-mail, CPF ou Senha incorretos.", "error");
+            }
+        });
+    }
+
+    // Ouvintes globais de ativação / saída do admin
+    document.getElementById('admin-login-btn')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (document.body.classList.contains('admin-mode-active')) {
+            showToast("👑 Você está logado na Área Administrativa!", "success");
+        } else {
+            openAdminModal('login-modal');
+        }
+    });
+
+    document.getElementById('close-login-btn')?.addEventListener('click', () => closeAdminModal('login-modal'));
+    document.getElementById('admin-logout-btn')?.addEventListener('click', disableAdminMode);
+
+    // 4. Seção Retrátil (Accordion) no formulário do Produto
+    const collTrigger = document.getElementById('collapsible-trigger');
+    const collContainer = document.querySelector('.collapsible-container');
+    if (collTrigger && collContainer) {
+        collTrigger.addEventListener('click', () => {
+            collContainer.classList.toggle('active');
+        });
+    }
+
+    // 5. Configuração do GitHub
+    document.getElementById('admin-gh-btn')?.addEventListener('click', () => {
+        document.getElementById('gh-admin-token').value = localStorage.getItem('gh-token') || '';
+        document.getElementById('gh-admin-owner').value = localStorage.getItem('gh-owner') || '';
+        document.getElementById('gh-admin-repo').value = localStorage.getItem('gh-repo') || '';
+        document.getElementById('gh-admin-branch').value = localStorage.getItem('gh-branch') || 'main';
+        openAdminModal('github-config-modal');
+    });
+
+    document.getElementById('close-github-config-btn')?.addEventListener('click', () => closeAdminModal('github-config-modal'));
+
+    document.getElementById('github-admin-form')?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        localStorage.setItem('gh-token', document.getElementById('gh-admin-token').value.trim());
+        localStorage.setItem('gh-owner', document.getElementById('gh-admin-owner').value.trim());
+        localStorage.setItem('gh-repo', document.getElementById('gh-admin-repo').value.trim());
+        localStorage.setItem('gh-branch', document.getElementById('gh-admin-branch').value.trim());
+        showToast("⚙️ Dados do GitHub gravados no navegador!", "success");
+        closeAdminModal('github-config-modal');
+    });
+
+    // 6. Salvar localmente + sincronizar com GitHub (opcional, em silêncio)
+    async function autoSyncWithGithub() {
+        // ── PASSO 1: Salvar no localStorage IMEDIATAMENTE ──
+        localStorage.setItem('vidal_products', JSON.stringify(products));
+
+        // ── PASSO 2: Tentar sincronizar com GitHub em segundo plano (silencioso) ──
+        const token = localStorage.getItem('gh-token');
+        const owner = localStorage.getItem('gh-owner');
+        const repo  = localStorage.getItem('gh-repo');
+        const branch = localStorage.getItem('gh-branch') || 'main';
+
+        // Se GitHub não configurado, não mostra nada — produto já está salvo localmente
+        if (!token || !owner || !repo) return;
+
+        try {
+            const jsonString = JSON.stringify(products, null, 4);
+            const jsContent = `const products = ${jsonString};\n`;
+            const encodedContent = btoa(unescape(encodeURIComponent(jsContent)));
+            const path = 'products.js';
+            const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+
+            let sha = null;
+            const getRes = await fetch(`${url}?ref=${branch}`, {
+                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' }
+            });
+            if (getRes.ok) {
+                const getJson = await getRes.json();
+                sha = getJson.sha;
+            }
+
+            const putData = {
+                message: "Atualizar catálogo via Admin Integrado",
+                content: encodedContent,
+                branch: branch
+            };
+            if (sha) putData.sha = sha;
+
+            const putRes = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(putData)
+            });
+
+            if (putRes.ok) {
+                showToast("☁️ Sincronizado com o GitHub!", "success", 4000);
+            }
+        } catch (err) {
+            // Falha silenciosa — produto já está salvo no navegador
+            console.warn('GitHub sync falhou (silencioso):', err.message);
+        }
+    }
+
+    // 7. Lógica de Gerenciamento de Produtos (Criação, Edição, Remoção)
+    let uploadedImagesBase64 = [];
+    const adminFilePreview = document.getElementById('admin-image-preview');
+    const adminFileInput = document.getElementById('product-admin-file-input');
+
+    // Helper para redimensionar imagem antes do base64
+    function resizeImage(file, maxWidth, maxHeight) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height *= maxWidth / width;
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width *= maxHeight / height;
+                            height = maxHeight;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    resolve(canvas.toDataURL('image/jpeg', 0.8));
+                };
+                img.onerror = (err) => reject(err);
+            };
+            reader.onerror = (err) => reject(err);
+        });
+    }
+
+    function addAdminPreviewImage(base64) {
+        uploadedImagesBase64.push(base64);
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-preview-wrapper';
+        
+        const imgEl = document.createElement('img');
+        imgEl.src = base64;
+        
+        const removeBtn = document.createElement('span');
+        removeBtn.className = 'image-preview-remove';
+        removeBtn.innerHTML = '&times;';
+        
+        removeBtn.onclick = () => {
+            const idx = uploadedImagesBase64.indexOf(base64);
+            if(idx > -1) uploadedImagesBase64.splice(idx, 1);
+            wrapper.remove();
+        };
+
+        wrapper.appendChild(imgEl);
+        wrapper.appendChild(removeBtn);
+        adminFilePreview.appendChild(wrapper);
+    }
+
+    if (adminFileInput) {
+        adminFileInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (!files.length) return;
+
+            for (let file of files) {
+                if (file.type.startsWith('image/')) {
+                    try {
+                        const base64 = await resizeImage(file, 800, 800);
+                        addAdminPreviewImage(base64);
+                    } catch (err) {
+                        console.error(err);
+                        showToast("Falha ao processar arquivo de imagem.", "error");
+                    }
+                }
+            }
+            adminFileInput.value = '';
+        });
+    }
+
+    const productAdminForm = document.getElementById('product-admin-form');
+    const productModalTitle = document.getElementById('product-modal-title');
+    const productAdminId = document.getElementById('product-admin-id');
+    const productAdminName = document.getElementById('product-admin-name');
+    const productAdminType = document.getElementById('product-admin-type');
+    const productAdminCategory = document.getElementById('product-admin-category');
+    const productAdminPrice = document.getElementById('product-admin-price');
+    const productAdminDesc = document.getElementById('product-admin-description');
+    const productAdminBenefits = document.getElementById('product-admin-benefits');
+    const productAdminImages = document.getElementById('product-admin-images');
+
+    // Novo Produto
+    document.getElementById('admin-new-btn')?.addEventListener('click', () => {
+        productAdminForm.reset();
+        productAdminId.value = '';
+        productModalTitle.textContent = 'Adicionar Produto';
+        uploadedImagesBase64 = [];
+        adminFilePreview.innerHTML = '';
+        document.querySelector('.collapsible-container')?.classList.remove('active');
+        openAdminModal('product-admin-modal');
+    });
+
+    document.getElementById('close-product-admin-btn')?.addEventListener('click', () => closeAdminModal('product-admin-modal'));
+    document.getElementById('cancel-product-admin-btn')?.addEventListener('click', () => closeAdminModal('product-admin-modal'));
+
+    // Editar Produto
+    function editProductLogic(id) {
+        const product = products.find(p => p.id === id);
+        if (!product) return;
+
+        productModalTitle.textContent = 'Editar Produto';
+        productAdminId.value = product.id;
+        productAdminName.value = product.name;
+        productAdminType.value = product.type;
+        productAdminCategory.value = product.category || '';
+        productAdminPrice.value = product.price || '';
+        productAdminDesc.value = product.description || '';
+        productAdminBenefits.value = product.benefits || '';
+        
+        uploadedImagesBase64 = [];
+        adminFilePreview.innerHTML = '';
+        let urls = [];
+
+        if (product.images && Array.isArray(product.images)) {
+            product.images.forEach(img => {
+                if (img.startsWith('data:image')) {
+                    addAdminPreviewImage(img);
+                } else {
+                    urls.push(img);
+                }
+            });
+        }
+
+        productAdminImages.value = urls.join(', ');
+        document.querySelector('.collapsible-container')?.classList.remove('active');
+        openAdminModal('product-admin-modal');
+    }
+    window.triggerCardEdit = editProductLogic;
+
+    // Excluir Produto
+    function deleteProductLogic(id) {
+        const product = products.find(p => p.id === id);
+        if (!product) return;
+
+        if (confirm(`Tem certeza que deseja excluir o produto "${product.name}"?`)) {
+            const idx = products.findIndex(p => p.id === id);
+            if (idx !== -1) {
+                products.splice(idx, 1);
+                showToast(`🗑️ "${product.name}" excluído localmente.`, "success");
+                
+                // Recarrega vitrines na hora
+                renderSection('pedra', stonesContainer);
+                renderSection('acessorio', accessoriesContainer);
+                renderAdminTable();
+                
+                // Salva automaticamente em background
+                autoSyncWithGithub();
+            }
+        }
+    }
+    window.triggerCardDelete = deleteProductLogic;
+
+    // Submissão do Formulário de Produto
+    productAdminForm?.addEventListener('submit', (e) => {
+        e.preventDefault();
+
+        const name = productAdminName.value.trim();
+        const type = productAdminType.value;
+        
+        // Smart Defaults (Valores inteligentes se em branco)
+        let price = productAdminPrice.value.trim();
+        if (!price) price = "Sob Consulta";
+
+        let category = productAdminCategory.value.trim();
+        if (!category) {
+            category = type === 'pedra' ? 'Pedra Natural' : 'Acessório';
+        }
+
+        let desc = productAdminDesc.value.trim();
+        if (!desc) {
+            desc = `Lindo(a) ${name}, selecionado(a) especialmente para trazer sofisticação e ótimas energias ao seu dia.`;
+        }
+
+        let benefits = productAdminBenefits.value.trim();
+        if (!benefits) {
+            benefits = "Harmonização energética, beleza e exclusividade.";
+        }
+
+        // Imagens
+        const imagesStr = productAdminImages.value.trim();
+        const urlsArray = imagesStr.split(',').map(img => img.trim()).filter(img => img !== '');
+        const finalImagesArray = [...urlsArray, ...uploadedImagesBase64];
+
+        if (finalImagesArray.length === 0) {
+            // Imagem padrão elegante
+            finalImagesArray.push("https://images.unsplash.com/photo-1567653418876-5bb0e566e1c2?auto=format&fit=crop&q=80&w=800");
+        }
+
+        const productData = {
+            id: productAdminId.value ? parseInt(productAdminId.value) : null,
+            name,
+            type,
+            category,
+            price,
+            description: desc,
+            benefits,
+            images: finalImagesArray
+        };
+
+        if (productData.id) {
+            // Atualizar existente
+            const idx = products.findIndex(p => p.id === productData.id);
+            if (idx !== -1) {
+                products[idx] = productData;
+                showToast(`✅ "${name}" atualizado!`, "success");
+            }
+        } else {
+            // Cadastrar novo
+            const maxId = products.length > 0 ? Math.max(...products.map(p => p.id)) : 0;
+            productData.id = maxId + 1;
+            products.push(productData);
+            showToast(`✨ "${name}" adicionado com sucesso!`, "success");
+        }
+
+        closeAdminModal('product-admin-modal');
+        
+        // Recarrega vitrines na hora
+        renderSection('pedra', stonesContainer);
+        renderSection('acessorio', accessoriesContainer);
+        renderAdminTable();
+        
+        // Salva automaticamente em background
+        autoSyncWithGithub();
+    });
+
+    // 8. Tabela Geral de Produtos (Modal)
+    function renderAdminTable() {
+        const tbody = document.getElementById('products-tbody');
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+        if (products.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Nenhum produto cadastrado.</td></tr>';
+            return;
+        }
+
+        products.forEach(p => {
+            const tr = document.createElement('tr');
+            const mainImage = (p.images && p.images.length > 0) ? p.images[0] : 'https://via.placeholder.com/50';
+
+            tr.innerHTML = `
+                <td>#${p.id}</td>
+                <td><img src="${mainImage}" class="table-product-preview" alt="${p.name}"></td>
+                <td><strong>${p.name}</strong></td>
+                <td><span style="text-transform: capitalize;">${p.type}</span></td>
+                <td>${p.category}</td>
+                <td>R$ ${p.price}</td>
+                <td>
+                    <button class="btn-table-edit" onclick="triggerTableEdit(${p.id})">Editar</button>
+                    <button class="btn-table-delete" onclick="triggerTableDelete(${p.id})">Excluir</button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    window.triggerTableEdit = (id) => {
+        closeAdminModal('table-general-modal');
+        editProductLogic(id);
+    };
+
+    window.triggerTableDelete = (id) => {
+        deleteProductLogic(id);
+    };
+
+    document.getElementById('admin-table-btn')?.addEventListener('click', () => {
+        renderAdminTable();
+        openAdminModal('table-general-modal');
+    });
+    document.getElementById('close-table-general-btn')?.addEventListener('click', () => closeAdminModal('table-general-modal'));
+
+    // 9. Persistência de Login (Iniciar logado se já autenticado na aba)
+    if (sessionStorage.getItem('adminMode') === 'true') {
+        enableAdminMode();
     }
 });
